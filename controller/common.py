@@ -10,6 +10,7 @@ import string
 import kopf
 import kubernetes
 from minio import Minio, MinioAdmin
+from minio.credentials import StaticProvider
 from minio.error import S3Error
 from minio.versioningconfig import ENABLED, VersioningConfig
 
@@ -60,9 +61,8 @@ def admin_client(
 ) -> MinioAdmin:
     """Return a MinioAdmin client for user/policy operations."""
     return MinioAdmin(
-        endpoint,
-        access_key=access_key,
-        secret_key=secret_key,
+        endpoint=endpoint,
+        credentials=StaticProvider(access_key, secret_key),
         secure=secure,
     )
 

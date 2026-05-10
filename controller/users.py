@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 def _user_exists(client: MinioAdmin, access_key: str) -> bool:
     """Return True if the MinIO user exists."""
     try:
-        client.get_user(access_key)
+        client.user_info(access_key)
     except S3Error as exc:
         if exc.code in ("XMinioAdminNoSuchUser", "NoSuchUser"):
             return False
@@ -51,10 +51,10 @@ def _ensure_user(
     """Create or update the MinIO user with the given credentials."""
     try:
         if _user_exists(client, access_key):
-            client.update_user(access_key, secret_key)
+            client.user_add(access_key, secret_key)
             logger.debug("Updated credentials for MinIO user %r", access_key)
         else:
-            client.add_user(access_key, secret_key)
+            client.user_add(access_key, secret_key)
             logger.info("Created MinIO user %r", access_key)
     except S3Error as exc:
         raise kopf.TemporaryError(
@@ -75,7 +75,7 @@ def _attach_policy(
             f"Unknown policy {policy!r}. Allowed values: {sorted(BUILTIN_POLICIES)}"
         )
     try:
-        client.attach_policy(policy, user=access_key)
+        client.attach_policy([policy], user=access_key)
         logger.info("Attached policy %r to MinIO user %r", policy, access_key)
     except S3Error as exc:
         raise kopf.TemporaryError(
@@ -131,10 +131,13 @@ def create_fn(
     spec: kopf.Spec,
     body: kopf.Body,
     name: str,
-    namespace: str,
+    namespace: str | None,
     logger: kopf.Logger,
     **_: Any,
 ) -> dict[str, Any]:
+    if namespace is None:
+        msg = "MinioUser must be namespace-scoped"
+        raise kopf.PermanentError(msg)
     return _upsert_user(spec, body, name, namespace, logger)
 
 
@@ -143,10 +146,13 @@ def resume_fn(
     spec: kopf.Spec,
     body: kopf.Body,
     name: str,
-    namespace: str,
+    namespace: str | None,
     logger: kopf.Logger,
     **_: Any,
 ) -> dict[str, Any]:
+    if namespace is None:
+        msg = "MinioUser must be namespace-scoped"
+        raise kopf.PermanentError(msg)
     return _upsert_user(spec, body, name, namespace, logger)
 
 
@@ -157,10 +163,13 @@ def update_fn(
     spec: kopf.Spec,
     body: kopf.Body,
     name: str,
-    namespace: str,
+    namespace: str | None,
     logger: kopf.Logger,
     **_: Any,
 ) -> dict[str, Any]:
+    if namespace is None:
+        msg = "MinioUser must be namespace-scoped"
+        raise kopf.PermanentError(msg)
     return _upsert_user(spec, body, name, namespace, logger)
 
 
@@ -170,17 +179,20 @@ def update_fn(
 def delete_fn(
     spec: kopf.Spec,
     name: str,
-    namespace: str,
+    namespace: str | None,
     logger: kopf.Logger,
     **_: Any,
 ) -> None:
+    if namespace is None:
+        msg = "MinioUser must be namespace-scoped"
+        raise kopf.PermanentError(msg)
     secret_name: str = spec["secretName"]
     secret_ns: str = spec.get("secretNamespace", namespace)
 
     client = admin_client()
     try:
         if _user_exists(client, name):
-            client.remove_user(name)
+            client.user_remove(name)
             logger.info("Deleted MinIO user %r", name)
         else:
             logger.info("MinIO user %r already absent", name)
@@ -205,11 +217,14 @@ def check_drift(
     spec: kopf.Spec,
     body: kopf.Body,
     name: str,
-    namespace: str,
+    namespace: str | None,
     logger: kopf.Logger,
     **_: Any,
 ) -> dict[str, Any] | None:
     """Detect and remediate out-of-band changes to the MinIO user."""
+    if namespace is None:
+        msg = "MinioUser must be namespace-scoped"
+        raise kopf.PermanentError(msg)
     client = admin_client()
     if not _user_exists(client, name):
         logger.warning("Drift detected: user %r is missing — recreating", name)
