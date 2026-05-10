@@ -16,7 +16,7 @@ from common import (
     get_existing_secret_data,
     rand_secret_key,
 )
-from minio.error import S3Error
+from minio.error import MinioAdminException, S3Error
 
 if TYPE_CHECKING:
     from minio import MinioAdmin
@@ -31,13 +31,17 @@ def _user_exists(client: MinioAdmin, access_key: str) -> bool:
     """Return True if the MinIO user exists."""
     try:
         client.user_info(access_key)
+    except MinioAdminException as exc:
+        body = exc._body  # noqa: SLF001
+        if "XMinioAdminNoSuchUser" in body or "NoSuchUser" in body:
+            return False
+        err_msg = f"MinIO admin error checking user {access_key!r}: {exc}"
+        raise kopf.TemporaryError(err_msg, delay=30) from exc
     except S3Error as exc:
         if exc.code in ("XMinioAdminNoSuchUser", "NoSuchUser"):
             return False
-        raise kopf.TemporaryError(
-            f"MinIO error checking user {access_key!r}: {exc}",
-            delay=30,
-        ) from exc
+        err_msg = f"MinIO error checking user {access_key!r}: {exc}"
+        raise kopf.TemporaryError(err_msg, delay=30) from exc
     else:
         return True
 
@@ -56,11 +60,9 @@ def _ensure_user(
         else:
             client.user_add(access_key, secret_key)
             logger.info("Created MinIO user %r", access_key)
-    except S3Error as exc:
-        raise kopf.TemporaryError(
-            f"MinIO error upserting user {access_key!r}: {exc}",
-            delay=30,
-        ) from exc
+    except (S3Error, MinioAdminException) as exc:
+        err_msg = f"MinIO error upserting user {access_key!r}: {exc}"
+        raise kopf.TemporaryError(err_msg, delay=30) from exc
 
 
 def _attach_policy(
@@ -77,11 +79,9 @@ def _attach_policy(
     try:
         client.attach_policy([policy], user=access_key)
         logger.info("Attached policy %r to MinIO user %r", policy, access_key)
-    except S3Error as exc:
-        raise kopf.TemporaryError(
-            f"MinIO error attaching policy {policy!r} to {access_key!r}: {exc}",
-            delay=30,
-        ) from exc
+    except (S3Error, MinioAdminException) as exc:
+        err_msg = f"MinIO error attaching policy {policy!r} to {access_key!r}: {exc}"
+        raise kopf.TemporaryError(err_msg, delay=30) from exc
 
 
 def _upsert_user(
@@ -196,11 +196,9 @@ def delete_fn(
             logger.info("Deleted MinIO user %r", name)
         else:
             logger.info("MinIO user %r already absent", name)
-    except S3Error as exc:
-        raise kopf.TemporaryError(
-            f"MinIO error deleting user {name!r}: {exc}",
-            delay=30,
-        ) from exc
+    except (S3Error, MinioAdminException) as exc:
+        err_msg = f"MinIO error deleting user {name!r}: {exc}"
+        raise kopf.TemporaryError(err_msg, delay=30) from exc
 
     delete_secret(secret_ns, secret_name, logger)
 
