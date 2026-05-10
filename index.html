@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>minio-provisioner</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+         max-width: 800px; margin: 2rem auto; padding: 0 1rem; color: #24292f;
+         line-height: 1.6; }
+  pre { background: #f6f8fa; padding: 1rem; border-radius: 6px; overflow-x: auto; }
+  code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.9em; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+  th, td { border: 1px solid #d0d7de; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f6f8fa; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #d0d7de; margin: 1.5rem 0; }
+  h1 { border-bottom: 1px solid #d0d7de; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #d0d7de; padding-bottom: 0.3em; }
+</style>
+</head>
+<body>
+<h1>minio-provisioner</h1>
+<p>A lightweight Kubernetes operator that provisions MinIO buckets and users declaratively via CRDs.</p>
+<p>Applications can request their own MinIO bucket and credentials without manual MinIO console access.</p>
+<hr>
+<h2>What it does</h2>
+<p>The operator manages two CRD kinds:</p>
+<table>
+  <thead><tr>
+    <th>Kind</th>
+    <th>What it provisions</th>
+  </tr>
+  </thead><tbody>
+  <tr>
+    <td><code>MinioBucket</code></td>
+    <td>A MinIO bucket with optional versioning</td>
+  </tr>
+  <tr>
+    <td><code>MinioUser</code></td>
+    <td>A MinIO user with a built-in policy, credentials stored in a K8s Secret</td>
+  </tr>
+  </tbody>
+</table>
+<p>All resources are reconciled continuously — the operator detects and repairs out-of-band drift every 5 minutes.</p>
+<hr>
+<h2>Installation</h2>
+<p>Add the Helm repository:</p>
+<pre><code class="language-bash">
+helm repo add minio-provisioner https://drewsonne.github.io/minio-provisioner
+helm repo update
+</code></pre>
+<p>Install the chart:</p>
+<pre><code class="language-bash">
+helm install minio-provisioner minio-provisioner/minio-provisioner \
+  --namespace minio \
+  --set minio.endpoint=minio.minio.svc.cluster.local:9000 \
+  --set minio.credentialsSecret.name=minio \
+  --set minio.credentialsSecret.namespace=minio
+</code></pre>
+<hr>
+<h2>Requirements</h2>
+<ul>
+  <li>A running MinIO instance accessible from within the cluster</li>
+  <li>A Kubernetes Secret containing MinIO root credentials:</li>
+</ul>
+<pre><code class="language-yaml">
+apiVersion: v1
+kind: Secret
+metadata:
+  name: minio
+  namespace: minio
+stringData:
+  rootUser: &lt;admin-access-key&gt;
+  rootPassword: &lt;admin-secret-key&gt;
+</code></pre>
+<p>This is the secret that the official MinIO Helm chart creates automatically.</p>
+<hr>
+<h2>Configuration</h2>
+<p>Default values:</p>
+<pre><code class="language-yaml">
+image:
+  repository: drewsonne/minio-provisioner
+  tag: latest
+
+minio:
+  endpoint: minio.minio.svc.cluster.local:9000
+  secure: false
+  credentialsSecret:
+    name: minio
+    namespace: minio
+
+namespace: minio
+</code></pre>
+<hr>
+<h2>Usage</h2>
+<h3>MinioBucket</h3>
+<p>Creates a MinIO bucket. The bucket name is taken from <code>metadata.name</code>.</p>
+<pre><code class="language-yaml">
+apiVersion: minio.sonne.zone/v1
+kind: MinioBucket
+metadata:
+  name: dagster-io
+  namespace: minio
+spec:
+  versioning: false
+</code></pre>
+<p><strong>Deletion safety</strong>: Deleting a <code>MinioBucket</code> CR removes the Kubernetes resource but intentionally does <strong>not</strong> delete the MinIO bucket or its data, preventing accidental data loss.</p>
+<h3>MinioUser</h3>
+<p>Creates a MinIO user with the named built-in policy. The access key is taken from <code>metadata.name</code>.</p>
+<pre><code class="language-yaml">
+apiVersion: minio.sonne.zone/v1
+kind: MinioUser
+metadata:
+  name: dagster
+  namespace: minio
+spec:
+  policy: readwrite
+  secretName: dagster-minio-credentials
+  secretNamespace: dagster       # optional; defaults to CR namespace
+</code></pre>
+<p><code>policy</code> values:</p>
+<table>
+  <thead><tr>
+    <th>Value</th>
+    <th>Access</th>
+  </tr>
+  </thead><tbody>
+  <tr>
+    <td><code>readwrite</code></td>
+    <td>Read and write to all buckets</td>
+  </tr>
+  <tr>
+    <td><code>readonly</code></td>
+    <td>Read from all buckets</td>
+  </tr>
+  <tr>
+    <td><code>writeonly</code></td>
+    <td>Write to all buckets</td>
+  </tr>
+  <tr>
+    <td><code>diagnostics</code></td>
+    <td>Read-only diagnostic/metrics access</td>
+  </tr>
+  <tr>
+    <td><code>consoleAdmin</code></td>
+    <td>Full MinIO console administration</td>
+  </tr>
+  </tbody>
+</table>
+<hr>
+<h2>Output</h2>
+<p><code>MinioUser</code> creates a Secret containing:</p>
+<ul>
+  <li><code>access_key</code> — the MinIO access key (same as the CR name)</li>
+  <li><code>secret_key</code> — the randomly generated secret key</li>
+  <li><code>endpoint</code> — the MinIO endpoint URL (e.g. <code>http://minio.minio.svc.cluster.local:9000</code>)</li>
+</ul>
+<pre><code class="language-bash">
+kubectl get secret dagster-minio-credentials -n dagster -o yaml
+</code></pre>
+<p>Use these as <code>AWS_ACCESS_KEY_ID</code> / <code>AWS_SECRET_ACCESS_KEY</code> environment variables for S3-compatible clients:</p>
+<pre><code class="language-yaml">
+env:
+  - name: AWS_ACCESS_KEY_ID
+    valueFrom:
+      secretKeyRef:
+        name: dagster-minio-credentials
+        key: access_key
+  - name: AWS_SECRET_ACCESS_KEY
+    valueFrom:
+      secretKeyRef:
+        name: dagster-minio-credentials
+        key: secret_key
+</code></pre>
+<hr>
+<h2>Behaviour notes</h2>
+<ul>
+  <li><strong>Idempotent</strong> — safe to reapply; existing MinIO resources are updated, not recreated</li>
+  <li><strong>Secret preservation</strong> — if a Secret already exists, the <code>secret_key</code> is preserved rather than regenerated; user credentials are not rotated on every reconcile</li>
+  <li><strong>Bucket safety</strong> — deleting a <code>MinioBucket</code> CR preserves the MinIO bucket and its data</li>
+  <li><strong>User deletion</strong> — deleting a <code>MinioUser</code> CR removes the MinIO user and the K8s Secret</li>
+  <li><strong>Drift detection</strong> — a timer runs every 5 minutes to detect and repair out-of-band changes (e.g. manually deleted users or buckets); drift is visible in <code>kubectl describe</code> as a K8s Warning event and in the <code>Drift</code> printer column</li>
+</ul>
+<hr>
+<h2>Observability</h2>
+<pre><code class="language-bash">
+kubectl get miniobuckets
+kubectl get miniousers
+</code></pre>
+<p>Printer columns include <code>Ready</code>, <code>Drift</code>, and <code>Age</code>. Drift events are also emitted as Kubernetes Warning events visible via <code>kubectl describe</code>.</p>
+<hr>
+<h2>Development</h2>
+<p>Build locally:</p>
+<pre><code class="language-bash">
+docker build -t drewsonne/minio-provisioner:dev .
+</code></pre>
+<p>Run locally (requires cluster access and MinIO reachable):</p>
+<pre><code class="language-bash">
+docker run --rm \
+  -e MINIO_ENDPOINT=minio.minio.svc.cluster.local:9000 \
+  -e MINIO_ACCESS_KEY=minioadmin \
+  -e MINIO_SECRET_KEY=minioadmin \
+  -e MINIO_SECURE=false \
+  drewsonne/minio-provisioner:dev
+</code></pre>
+<hr>
+<h2>License</h2>
+<p>MIT</p>
+<hr>
+
+<h2>Helm Chart Releases</h2>
+<table>
+  <thead><tr><th>Version</th><th>App Version</th><th>Created</th><th>Download</th></tr></thead>
+  <tbody>
+  <tr><td>0.0.2</td><td>0.0.2</td><td>2026-05-10T16:35:59</td><td><a href="minio-provisioner-0.0.2.tgz">minio-provisioner-0.0.2.tgz</a></td></tr>
+  </tbody>
+</table>
+<hr>
+<p><a href="index.yaml">Helm Repository Index (index.yaml)</a></p>
+</body>
+</html>

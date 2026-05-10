@@ -1,0 +1,14 @@
+apiVersion: v1
+entries:
+  minio-provisioner:
+  - apiVersion: v2
+    appVersion: 0.0.2
+    created: "2026-05-10T16:35:59.416857191Z"
+    description: Provision MinIO buckets and users via CRDs
+    digest: 17436cc5916c49c12e3c228f188c7b770a85f8bf4d012d61ee1b8b895ffdd0f5
+    name: minio-provisioner
+    type: application
+    urls:
+    - https://drewsonne.github.io/minio-provisioner/minio-provisioner-0.0.2.tgz
+    version: 0.0.2
+generated: "2026-05-10T16:35:59.416503625Z"
