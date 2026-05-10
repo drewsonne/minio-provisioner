@@ -1,0 +1,15 @@
+image:
+  repository: drewsonne/minio-provisioner
+  tag: latest
+
+minio:
+  # Internal cluster endpoint (host:port, no scheme)
+  endpoint: minio.minio.svc.cluster.local:9000
+  # Whether to use TLS for the internal connection (false for in-cluster HTTP)
+  secure: false
+  # Kubernetes Secret in the minio namespace holding rootUser / rootPassword
+  credentialsSecret:
+    name: minio
+    namespace: minio
+
+namespace: minio

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: minio-provisioner
+description: Provision MinIO buckets and users via CRDs
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

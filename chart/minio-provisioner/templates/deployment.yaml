@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minio-provisioner
+  namespace: {{ .Values.namespace }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: minio-provisioner
+  template:
+    metadata:
+      labels:
+        app: minio-provisioner
+    spec:
+      serviceAccountName: minio-provisioner
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: controller
+          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 5
+          env:
+            - name: MINIO_ENDPOINT
+              value: {{ .Values.minio.endpoint }}
+            - name: MINIO_SECURE
+              value: {{ .Values.minio.secure | quote }}
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.minio.credentialsSecret.name }}
+                  namespace: {{ .Values.minio.credentialsSecret.namespace }}
+                  key: rootUser
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.minio.credentialsSecret.name }}
+                  namespace: {{ .Values.minio.credentialsSecret.namespace }}
+                  key: rootPassword
