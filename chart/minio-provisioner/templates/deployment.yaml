@@ -43,11 +43,9 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.minio.credentialsSecret.name }}
-                  namespace: {{ .Values.minio.credentialsSecret.namespace }}
                   key: rootUser
             - name: MINIO_SECRET_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.minio.credentialsSecret.name }}
-                  namespace: {{ .Values.minio.credentialsSecret.namespace }}
                   key: rootPassword
