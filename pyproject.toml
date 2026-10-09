@@ -47,6 +47,7 @@ unfixable = []
 "tests/**/*.py" = [
     "D103",     # test names describe the behaviour
     "INP001",   # tests/ is not a package
+    "S101",     # pytest uses assert
     "SLF001",   # tests exercise private helpers
 ]
 

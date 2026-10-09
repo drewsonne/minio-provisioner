@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from typing import TYPE_CHECKING, Any
 
 import kopf
@@ -20,6 +21,10 @@ from minio.error import MinioAdminException, S3Error
 
 if TYPE_CHECKING:
     from minio import MinioAdmin
+
+# minio-py encrypts admin payloads with a 64 MiB argon2id KDF per call; a few
+# handlers calling at once exceed the pod's memory limit, so one at a time.
+_ADMIN_LOCK = threading.Lock()
 
 
 # ---------------------------------------------------------------------------
@@ -107,9 +112,10 @@ def _upsert_user(
     existing = get_existing_secret_data(secret_ns, secret_name)
     secret_key: str = (existing or {}).get("secret_key") or rand_secret_key()
 
-    client = admin_client()
-    _ensure_user(client, name, secret_key, logger)
-    _attach_policy(client, name, policy, logger)
+    with _ADMIN_LOCK:
+        client = admin_client()
+        _ensure_user(client, name, secret_key, logger)
+        _attach_policy(client, name, policy, logger)
 
     ensure_secret(
         secret_ns,
@@ -198,11 +204,12 @@ def delete_fn(
 
     client = admin_client()
     try:
-        if _user_exists(client, name):
-            client.user_remove(name)
-            logger.info("Deleted MinIO user %r", name)
-        else:
-            logger.info("MinIO user %r already absent", name)
+        with _ADMIN_LOCK:
+            if _user_exists(client, name):
+                client.user_remove(name)
+                logger.info("Deleted MinIO user %r", name)
+            else:
+                logger.info("MinIO user %r already absent", name)
     except (S3Error, MinioAdminException) as exc:
         err_msg = f"MinIO error deleting user {name!r}: {exc}"
         raise kopf.TemporaryError(err_msg, delay=30) from exc
@@ -230,8 +237,9 @@ def check_drift(
     if namespace is None:
         msg = "MinioUser must be namespace-scoped"
         raise kopf.PermanentError(msg)
-    client = admin_client()
-    if not _user_exists(client, name):
+    with _ADMIN_LOCK:
+        exists = _user_exists(admin_client(), name)
+    if not exists:
         logger.warning("Drift detected: user %r is missing — recreating", name)
         result = _upsert_user(spec, body, name, namespace, logger)
         return {**result, "drift": True, "driftReason": "missing"}
