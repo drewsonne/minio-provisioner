@@ -44,6 +44,15 @@ unfixable = []
     "PLR2004",  # magic values in status code checks
     "TRY003",   # long messages in TemporaryError are fine for kopf
 ]
+"tests/**/*.py" = [
+    "D103",     # test names describe the behaviour
+    "INP001",   # tests/ is not a package
+    "SLF001",   # tests exercise private helpers
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["controller"]
+
+[tool.ty.environment]
+extra-paths = ["controller"]

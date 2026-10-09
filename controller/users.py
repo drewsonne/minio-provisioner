@@ -79,7 +79,14 @@ def _attach_policy(
     try:
         client.attach_policy([policy], user=access_key)
         logger.info("Attached policy %r to MinIO user %r", policy, access_key)
-    except (S3Error, MinioAdminException) as exc:
+    except MinioAdminException as exc:
+        # MinIO rejects re-attaching an attached policy; every reconcile does.
+        if "XMinioAdminPolicyChangeAlreadyApplied" in exc._body:  # noqa: SLF001
+            logger.debug("Policy %r already attached to %r", policy, access_key)
+            return
+        err_msg = f"MinIO error attaching policy {policy!r} to {access_key!r}: {exc}"
+        raise kopf.TemporaryError(err_msg, delay=30) from exc
+    except S3Error as exc:
         err_msg = f"MinIO error attaching policy {policy!r} to {access_key!r}: {exc}"
         raise kopf.TemporaryError(err_msg, delay=30) from exc
 
