@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import threading
 from typing import TYPE_CHECKING, Any
 
@@ -96,6 +97,25 @@ def _attach_policy(
         raise kopf.TemporaryError(err_msg, delay=30) from exc
 
 
+def _detach_other_policies(
+    client: MinioAdmin,
+    access_key: str,
+    policy: str,
+    logger: kopf.Logger,
+) -> None:
+    """Detach every policy except `policy`, so a spec change replaces it."""
+    try:
+        info = json.loads(client.user_info(access_key))
+        attached: str = info.get("policyName") or ""
+        stale: list[str] = sorted(set(attached.split(",")) - {policy, ""})
+        if stale:
+            client.detach_policy(stale, user=access_key)
+            logger.info("Detached policies %r from MinIO user %r", stale, access_key)
+    except (S3Error, MinioAdminException) as exc:
+        err_msg = f"MinIO error detaching policies from {access_key!r}: {exc}"
+        raise kopf.TemporaryError(err_msg, delay=30) from exc
+
+
 def _upsert_user(
     spec: kopf.Spec,
     body: kopf.Body,
@@ -116,6 +136,7 @@ def _upsert_user(
         client = admin_client()
         _ensure_user(client, name, secret_key, logger)
         _attach_policy(client, name, policy, logger)
+        _detach_other_policies(client, name, policy, logger)
 
     ensure_secret(
         secret_ns,

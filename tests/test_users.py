@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from typing import cast
 from unittest.mock import MagicMock
 
 import kopf
@@ -42,7 +43,7 @@ def test_upsert_users_serialize_admin_calls(monkeypatch: pytest.MonkeyPatch) -> 
     peak = 0
     guard = threading.Lock()
 
-    def admin_call(*_: object, **__: object) -> None:
+    def admin_call(*_: object, **__: object) -> str:
         nonlocal active, peak
         with guard:
             active += 1
@@ -50,6 +51,7 @@ def test_upsert_users_serialize_admin_calls(monkeypatch: pytest.MonkeyPatch) -> 
         time.sleep(0.05)
         with guard:
             active -= 1
+        return "{}"
 
     client = MagicMock()
     client.user_info.side_effect = admin_call
@@ -73,3 +75,34 @@ def test_upsert_users_serialize_admin_calls(monkeypatch: pytest.MonkeyPatch) -> 
         t.join()
 
     assert peak == 1
+
+
+def test_upsert_user_detaches_policies_not_in_spec(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = MagicMock()
+    client.user_info.return_value = '{"policyName": "readwrite,diagnostics"}'
+    monkeypatch.setattr(users, "admin_client", lambda: client)
+    monkeypatch.setattr(users, "get_existing_secret_data", lambda *_: None)
+    monkeypatch.setattr(users, "ensure_secret", lambda *_: None)
+
+    spec = {"policy": "readonly", "secretName": "creds"}
+    body = cast("kopf.Body", {"metadata": {"namespace": "ns"}})
+    users._upsert_user(cast("kopf.Spec", spec), body, "u", "ns", LOGGER)
+
+    client.attach_policy.assert_called_once_with(["readonly"], user="u")
+    client.detach_policy.assert_called_once_with(["diagnostics", "readwrite"], user="u")
+
+
+def test_upsert_user_keeps_policy_in_spec(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = MagicMock()
+    client.user_info.return_value = '{"policyName": "readwrite"}'
+    monkeypatch.setattr(users, "admin_client", lambda: client)
+    monkeypatch.setattr(users, "get_existing_secret_data", lambda *_: None)
+    monkeypatch.setattr(users, "ensure_secret", lambda *_: None)
+
+    spec = {"policy": "readwrite", "secretName": "creds"}
+    body = cast("kopf.Body", {"metadata": {"namespace": "ns"}})
+    users._upsert_user(cast("kopf.Spec", spec), body, "u", "ns", LOGGER)
+
+    client.detach_policy.assert_not_called()
