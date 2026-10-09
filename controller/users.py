@@ -167,12 +167,15 @@ def create_fn(
     name: str,
     namespace: str | None,
     logger: kopf.Logger,
+    patch: kopf.Patch,
     **_: Any,
 ) -> dict[str, Any]:
     if namespace is None:
         msg = "MinioUser must be namespace-scoped"
         raise kopf.PermanentError(msg)
-    return _upsert_user(spec, body, name, namespace, logger)
+    result = _upsert_user(spec, body, name, namespace, logger)
+    patch.status["ready"] = True
+    return result
 
 
 @kopf.on.resume(CRD_GROUP, CRD_VERSION, "miniousers")
@@ -182,12 +185,15 @@ def resume_fn(
     name: str,
     namespace: str | None,
     logger: kopf.Logger,
+    patch: kopf.Patch,
     **_: Any,
 ) -> dict[str, Any]:
     if namespace is None:
         msg = "MinioUser must be namespace-scoped"
         raise kopf.PermanentError(msg)
-    return _upsert_user(spec, body, name, namespace, logger)
+    result = _upsert_user(spec, body, name, namespace, logger)
+    patch.status["ready"] = True
+    return result
 
 
 @kopf.on.update(
@@ -199,12 +205,15 @@ def update_fn(
     name: str,
     namespace: str | None,
     logger: kopf.Logger,
+    patch: kopf.Patch,
     **_: Any,
 ) -> dict[str, Any]:
     if namespace is None:
         msg = "MinioUser must be namespace-scoped"
         raise kopf.PermanentError(msg)
-    return _upsert_user(spec, body, name, namespace, logger)
+    result = _upsert_user(spec, body, name, namespace, logger)
+    patch.status["ready"] = True
+    return result
 
 
 @kopf.on.delete(

@@ -26,7 +26,7 @@ spec:
           jsonPath: .spec.versioning
         - name: Ready
           type: boolean
-          jsonPath: .status.create_fn.ready
+          jsonPath: .status.ready
         - name: Drift
           type: boolean
           jsonPath: .status.check_drift.drift

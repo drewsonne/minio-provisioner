@@ -43,9 +43,11 @@ def create_fn(
     spec: kopf.Spec,
     name: str,
     logger: kopf.Logger,
+    patch: kopf.Patch,
     **_: Any,
 ) -> dict[str, Any]:
     _upsert_bucket(spec, name, logger)
+    patch.status["ready"] = True
     return {"bucket": name, "ready": True}
 
 
@@ -54,9 +56,11 @@ def resume_fn(
     spec: kopf.Spec,
     name: str,
     logger: kopf.Logger,
+    patch: kopf.Patch,
     **_: Any,
 ) -> dict[str, Any]:
     _upsert_bucket(spec, name, logger)
+    patch.status["ready"] = True
     return {"bucket": name, "ready": True}
 
 
@@ -67,9 +71,11 @@ def update_fn(
     spec: kopf.Spec,
     name: str,
     logger: kopf.Logger,
+    patch: kopf.Patch,
     **_: Any,
 ) -> dict[str, Any]:
     _upsert_bucket(spec, name, logger)
+    patch.status["ready"] = True
     return {"bucket": name, "ready": True}
 
 
