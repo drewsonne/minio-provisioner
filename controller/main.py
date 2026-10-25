@@ -10,7 +10,11 @@ from typing import Any
 
 import buckets  # noqa: F401 — registers MinioBucket handlers
 import kopf
+import logs
 import users  # noqa: F401 — registers MinioUser handlers
+
+# kopf's CLI has already added its own root handler; replace it with JSON.
+logs.configure_logging()
 
 
 @kopf.on.startup()
